@@ -2,27 +2,35 @@
 
 import { useEffect, useState } from "react";
 import { useAuthStore } from "@/store/auth";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, RefreshCw, Upload, CalendarDays, Info } from "lucide-react";
+import DashboardHeader from "@/components/dashboard/DashboardHeader";
 import TimetableUploader from "@/components/timetable/TimetableUploader";
 import TimetableDisplay from "@/components/timetable/TimetableDisplay";
 import { getTimetable, TimetableEntry } from "@/lib/timetable-api";
-import { RefreshCw } from "lucide-react";
 
 export default function TimetablePage() {
-  const { profile } = useAuthStore();
+  const { user, token } = useAuthStore();
   const [entries, setEntries] = useState<TimetableEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingEntries, setEditingEntries] = useState<TimetableEntry[]>([]);
 
-  // Check if user is Academic Admin
-  const isAcademicAdmin = profile?.role === "ACADEMIC_ADMIN";
+  const isAcademicAdmin =
+    user?.role === "ACADEMIC_ADMIN" ||
+    user?.role === "SUPER_ADMIN" ||
+    user?.roles?.includes("ACADEMIC_ADMIN") ||
+    user?.roles?.includes("SUPER_ADMIN");
 
   const loadTimetable = async () => {
+    if (!token) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const data = await getTimetable();
       setEntries(data);
+      setIsEditing(false);
     } catch (err) {
       console.error("Failed to load timetable:", err);
     } finally {
@@ -30,95 +38,144 @@ export default function TimetablePage() {
     }
   };
 
+  const handleEdit = (entriesToEdit: TimetableEntry[]) => {
+    setEditingEntries(entriesToEdit);
+    setIsEditing(true);
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditingEntries([]);
+  };
+
   useEffect(() => {
-    loadTimetable();
-  }, []);
+    if (token) loadTimetable();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold">📅 Timetable Management</h1>
-        <p className="text-muted-foreground mt-2">
-          View and manage your class schedule
-        </p>
-      </div>
+    <div className="min-h-screen bg-slate-50">
+      <DashboardHeader />
 
-      {/* Upload Section — Only for Academic Admins */}
-      {isAcademicAdmin ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Upload Timetable</CardTitle>
-            <CardDescription>
-              Upload a photo of the timetable. Our AI will extract and organize the classes.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <TimetableUploader
-              onSuccess={(newEntries) => {
-                setEntries(newEntries);
-              }}
-            />
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="flex gap-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-4">
-          <AlertCircle className="h-5 w-5 text-amber-700 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-amber-700 dark:text-amber-300">
-            <p className="font-medium">Timetable Upload (Admin Only)</p>
-            <p className="mt-1">
-              Only Academic Admins can upload timetables. Contact your academic office to
-              manage the schedule.
-            </p>
+      <main className="mx-auto max-w-6xl space-y-8 px-4 py-8 sm:px-6">
+        {/* Title */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-[#ff9900]/10 text-[#ff9900]">
+              <CalendarDays className="h-6 w-6" />
+            </span>
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900">
+                {isAcademicAdmin ? "Update Timetable" : "Timetable"}
+              </h1>
+              <p className="text-sm text-slate-500">
+                {isAcademicAdmin
+                  ? "Upload a photo and let AI organize the schedule"
+                  : "Your class schedule"}
+              </p>
+            </div>
           </div>
-        </div>
-      )}
-
-      {/* Display Section */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold">Your Schedule</h2>
-          <Button
-            variant="outline"
-            size="sm"
+          <button
             onClick={loadTimetable}
             disabled={loading}
+            className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-[#ff9900] hover:text-[#b86e00] disabled:opacity-60"
           >
-            <RefreshCw className="h-4 w-4 mr-2" />
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             Refresh
-          </Button>
+          </button>
         </div>
-        {loading ? (
-          <Card>
-            <CardContent className="p-6">
-              <p className="text-muted-foreground text-center">Loading timetable...</p>
-            </CardContent>
-          </Card>
-        ) : (
-          <TimetableDisplay entries={entries} />
-        )}
-      </div>
 
-      {/* Info */}
-      <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
-        <CardHeader>
-          <CardTitle className="text-base text-blue-900 dark:text-blue-200">
-            💡 How it works
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm text-blue-800 dark:text-blue-300 space-y-2">
-          <p>
-            <strong>Academic Admin:</strong> Uploads timetable photos, which are automatically
-            parsed and organized
-          </p>
-          <p>
-            <strong>Students:</strong> Can view the class schedule here in an organized format
-          </p>
-          <p>
-            The schedule also appears in your dashboard and daily AI briefings.
-          </p>
-        </CardContent>
-      </Card>
+        {!user ? (
+          <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-400">
+            Loading your profile…
+          </div>
+        ) : (
+          <>
+            {/* Upload (admin) */}
+            {isAcademicAdmin && !isEditing && (
+              <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="mb-4 flex items-center gap-2">
+                  <Upload className="h-5 w-5 text-[#ff9900]" />
+                  <h2 className="font-semibold text-slate-900">Upload Timetable</h2>
+                </div>
+                <p className="mb-4 text-sm text-slate-500">
+                  Upload a photo of the timetable. Our AI extracts and organizes the
+                  classes for review before saving.
+                </p>
+                <TimetableUploader
+                  onSuccess={(newEntries) => {
+                    setEntries(newEntries);
+                    loadTimetable();
+                  }}
+                />
+              </section>
+            )}
+
+            {!isAcademicAdmin && (
+              <div className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600" />
+                <div className="text-sm text-amber-800">
+                  <p className="font-medium">Timetable is managed by your academic office</p>
+                  <p className="mt-1">
+                    You can view the schedule below. Contact an Academic Admin for changes.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Edit (admin) */}
+            {isAcademicAdmin && isEditing && (
+              <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="mb-1 font-semibold text-slate-900">Edit Timetable</h2>
+                <p className="mb-4 text-sm text-slate-500">
+                  Modify entries. Changes replace the current timetable.
+                </p>
+                <TimetableUploader
+                  initialEntries={editingEntries}
+                  onSuccess={(newEntries) => {
+                    setEntries(newEntries);
+                    loadTimetable();
+                  }}
+                  onCancel={handleCancelEdit}
+                />
+              </section>
+            )}
+
+            {/* Display */}
+            {!isEditing && (
+              <section className="space-y-4">
+                <h2 className="text-lg font-bold text-slate-900">Your Schedule</h2>
+                {loading ? (
+                  <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-400">
+                    Loading timetable…
+                  </div>
+                ) : (
+                  <TimetableDisplay
+                    entries={entries}
+                    isAdmin={isAcademicAdmin}
+                    onEdit={handleEdit}
+                  />
+                )}
+              </section>
+            )}
+
+            {/* Info */}
+            <section className="flex gap-3 rounded-2xl border border-blue-100 bg-blue-50/60 p-5">
+              <Info className="mt-0.5 h-5 w-5 flex-shrink-0 text-blue-600" />
+              <div className="space-y-1.5 text-sm text-blue-800">
+                <p>
+                  <strong>Academic Admin:</strong> uploads timetable photos that are auto-parsed
+                  and organized.
+                </p>
+                <p>
+                  <strong>Students:</strong> view the schedule here, on the dashboard, and in AI
+                  daily briefings.
+                </p>
+              </div>
+            </section>
+          </>
+        )}
+      </main>
     </div>
   );
 }

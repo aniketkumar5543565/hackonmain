@@ -63,7 +63,7 @@ class UserProfile(Base):
     user_roles: Mapped[list["UserRole"]] = relationship(  # type: ignore[name-defined]
         "UserRole",
         foreign_keys="UserRole.user_id",
-        lazy="selectin",
+        lazy="noload",  # Don't auto-load to avoid DB errors - load explicitly when needed
     )
 
     def __repr__(self) -> str:

@@ -10,7 +10,8 @@ import uuid
 from sqlalchemy import select
 
 from app.database import AsyncSessionLocal
-from app.models.user import UserProfile, Role, UserRole
+from app.models.user import UserProfile
+from app.models.academic import Department
 
 # Demo account UUIDs from Supabase
 DEMO_ACCOUNTS = [
@@ -37,6 +38,15 @@ DEMO_ACCOUNTS = [
 
 async def seed():
     async with AsyncSessionLocal() as db:
+        # Ensure a default department exists for the admin
+        result = await db.execute(select(Department).where(Department.code == "CSE"))
+        dept = result.scalar_one_or_none()
+        if not dept:
+            dept = Department(name="Computer Science & Engineering", code="CSE")
+            db.add(dept)
+            await db.flush()
+            print(f"✓ Created default department: CSE (id={dept.id})")
+
         for account in DEMO_ACCOUNTS:
             # Check if profile exists
             result = await db.execute(
@@ -45,20 +55,28 @@ async def seed():
             existing = result.scalar_one_or_none()
 
             if existing:
-                print(f"✓ {account['name']} profile already exists")
+                # Update department_id for admin accounts if not set
+                if account["role"] in ("ACADEMIC_ADMIN", "SUPER_ADMIN") and not existing.department_id:
+                    existing.department_id = dept.id
+                    print(f"✓ Updated {account['name']} with department CSE")
+                else:
+                    print(f"✓ {account['name']} profile already exists")
                 continue
 
-            # Create profile
+            # Create profile - assign department for admin and faculty
+            department_id = dept.id if account["role"] in ("ACADEMIC_ADMIN", "SUPER_ADMIN", "FACULTY") else None
+            
             profile = UserProfile(
                 id=account["id"],
                 email=account["email"],
                 full_name=account["name"],
                 role=account["role"],
                 is_demo=True,
+                department_id=department_id,
             )
             db.add(profile)
             await db.flush()
-            print(f"✓ Created {account['name']} profile")
+            print(f"✓ Created {account['name']} profile (dept={'CSE' if department_id else 'None'})")
 
         # Commit all profiles
         await db.commit()

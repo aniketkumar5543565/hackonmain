@@ -1,7 +1,7 @@
 import { create } from "zustand";
-import type { Session } from "@supabase/supabase-js";
+import { persist } from "zustand/middleware";
 
-export type Role = "STUDENT" | "ACADEMIC_ADMIN" | "FACULTY";
+export type Role = "STUDENT" | "ACADEMIC_ADMIN" | "SUPER_ADMIN" | "FACULTY";
 
 export interface UserProfile {
   id: string;
@@ -9,29 +9,36 @@ export interface UserProfile {
   full_name: string;
   role: Role;
   is_demo: boolean;
+  department_id?: string | null;
+  year_of_study?: number | null;
+  hostel_room_id?: string | null;
+  roles?: string[];
 }
 
 interface AuthState {
-  session: Session | null;
-  profile: UserProfile | null;
-  setSession: (session: Session | null) => void;
-  setProfile: (profile: UserProfile | null) => void;
+  token: string | null;
+  user: UserProfile | null;
+  setToken: (token: string) => void;
+  setUser: (user: UserProfile) => void;
   clearAuth: () => void;
   isAuthenticated: () => boolean;
-  /** Supabase access token — attached to every API request */
-  getToken: () => string | null;
 }
 
-export const useAuthStore = create<AuthState>((set, get) => ({
-  session: null,
-  profile: null,
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set, get) => ({
+      token: null,
+      user: null,
 
-  setSession: (session) => set({ session }),
-  setProfile: (profile) => set({ profile }),
+      setToken: (token) => set({ token }),
+      setUser: (user) => set({ user }),
 
-  clearAuth: () => set({ session: null, profile: null }),
+      clearAuth: () => set({ token: null, user: null }),
 
-  isAuthenticated: () => get().session !== null,
-
-  getToken: () => get().session?.access_token ?? null,
-}));
+      isAuthenticated: () => get().token !== null && get().user !== null,
+    }),
+    {
+      name: "auth-storage", // localStorage key
+    }
+  )
+);

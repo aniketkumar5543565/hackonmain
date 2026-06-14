@@ -10,12 +10,15 @@ from app.routers import (
     admin,
     ai,
     assignments,
+    attendance,
     auth,
     clubs,
     events,
     hostel,
+    mess,
     notices,
     placement,
+    wellbeing,
 )
 
 
@@ -33,31 +36,25 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — allow the Next.js dev server and Vercel deployment
+# CORS — allow all origins in development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.allowed_origins_list,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-# Global exception handler — never expose stack traces
+# Global exception handler — show actual errors in dev
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     import traceback
-    import uuid as _uuid
-
-    correlation_id = str(_uuid.uuid4())
-    print(f"[ERROR] correlation_id={correlation_id}\n{traceback.format_exc()}")
-
+    error_detail = traceback.format_exc()
+    print(f"[ERROR] {error_detail}")
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={
-            "detail": "An unexpected error occurred. Please try again.",
-            "correlation_id": correlation_id,
-        },
+        content={"detail": str(exc), "traceback": error_detail},
     )
 
 
@@ -73,6 +70,9 @@ app.include_router(clubs.router, prefix=PREFIX)
 app.include_router(notices.router, prefix=PREFIX)
 app.include_router(events.router, prefix=PREFIX)
 app.include_router(assignments.router, prefix=PREFIX)
+app.include_router(attendance.router, prefix=PREFIX)
+app.include_router(mess.router, prefix=PREFIX)
+app.include_router(wellbeing.router, prefix=PREFIX)
 app.include_router(ai.router, prefix=PREFIX)
 
 

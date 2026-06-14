@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, CalendarDays, Megaphone, PartyPopper, Sunrise, ArrowRight, UserRound } from "lucide-react";
 import LoginForm from "@/components/auth/LoginForm";
 import RegisterForm from "@/components/auth/RegisterForm";
 import { supabase } from "@/lib/supabase";
+import Starfield from "@/components/landing/Starfield";
+import Globe3D from "@/components/landing/Globe3D";
+import AuthShell from "@/components/landing/AuthShell";
 
 type View = "landing" | "login" | "register" | "demo-select";
 
@@ -62,176 +63,194 @@ export default function LandingPage() {
 
   if (view === "login") {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-sm">
-          <CardHeader>
-            <CardTitle>Sign In</CardTitle>
-            <CardDescription>Welcome back to CampusOS</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <LoginForm />
-            <p className="mt-4 text-center text-sm text-muted-foreground">
-              No account?{" "}
-              <button
-                onClick={() => setView("register")}
-                className="text-primary underline-offset-4 hover:underline"
-              >
-                Register
-              </button>
-            </p>
-            <p className="mt-2 text-center text-sm text-muted-foreground">
-              <button
-                onClick={() => setView("landing")}
-                className="text-primary underline-offset-4 hover:underline"
-              >
-                Back
-              </button>
-            </p>
-          </CardContent>
-        </Card>
-      </main>
+      <AuthShell
+        title="Welcome back"
+        subtitle="Sign in to continue to CampusOS"
+        onBack={() => setView("landing")}
+      >
+        <LoginForm />
+        <p className="mt-6 text-center text-sm text-white/55">
+          No account?{" "}
+          <button
+            onClick={() => setView("register")}
+            className="font-semibold text-[#febd69] underline-offset-4 hover:underline"
+          >
+            Create one
+          </button>
+        </p>
+      </AuthShell>
     );
   }
 
   if (view === "register") {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-sm">
-          <CardHeader>
-            <CardTitle>Create Account</CardTitle>
-            <CardDescription>Join CampusOS today</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <RegisterForm />
-            <p className="mt-4 text-center text-sm text-muted-foreground">
-              Already have an account?{" "}
-              <button
-                onClick={() => setView("login")}
-                className="text-primary underline-offset-4 hover:underline"
-              >
-                Sign In
-              </button>
-            </p>
-            <p className="mt-2 text-center text-sm text-muted-foreground">
-              <button
-                onClick={() => setView("landing")}
-                className="text-primary underline-offset-4 hover:underline"
-              >
-                Back
-              </button>
-            </p>
-          </CardContent>
-        </Card>
-      </main>
+      <AuthShell
+        title="Create your account"
+        subtitle="Join CampusOS in seconds"
+        onBack={() => setView("landing")}
+      >
+        <RegisterForm />
+        <p className="mt-6 text-center text-sm text-white/55">
+          Already have an account?{" "}
+          <button
+            onClick={() => setView("login")}
+            className="font-semibold text-[#febd69] underline-offset-4 hover:underline"
+          >
+            Sign In
+          </button>
+        </p>
+      </AuthShell>
     );
   }
 
   if (view === "demo-select") {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-blue-100 p-4">
-        <Card className="w-full max-w-2xl">
-          <CardHeader>
-            <CardTitle className="text-2xl">Try CampusOS</CardTitle>
-            <CardDescription>
-              Select a role to explore the system with demo data
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {demoError && (
-              <div className="flex gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
-                <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-                <div>{demoError}</div>
-              </div>
-            )}
-
-            <div className="grid gap-3 md:grid-cols-3">
-              {DEMO_ACCOUNTS.map((account) => (
-                <button
-                  key={account.email}
-                  onClick={() => handleTryDemo(account)}
-                  disabled={demoLoading !== null}
-                  className="group relative overflow-hidden rounded-lg border-2 border-muted bg-card p-4 text-left transition hover:border-primary hover:shadow-lg disabled:opacity-50"
-                >
-                  <div className="space-y-2">
-                    <h3 className="font-semibold group-hover:text-primary">
-                      👤 {account.name}
-                    </h3>
-                    <p className="text-sm text-muted-foreground">
-                      {account.description}
-                    </p>
-                    <p className="text-xs text-muted-foreground font-mono">
-                      {account.email}
-                    </p>
-                  </div>
-                  {demoLoading === account.email && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/10">
-                      <div className="text-xs text-white">Logging in...</div>
-                    </div>
-                  )}
-                </button>
-              ))}
+      <AuthShell
+        title="Try CampusOS"
+        subtitle="Pick a role to explore with demo data"
+        onBack={() => setView("landing")}
+        maxWidth="max-w-3xl"
+      >
+        <div className="space-y-4">
+          {demoError && (
+            <div className="flex gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
+              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <div>{demoError}</div>
             </div>
+          )}
 
-            <div className="border-t pt-4 flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setView("landing")}
-                className="flex-1"
+          <div className="grid gap-3 sm:grid-cols-3">
+            {DEMO_ACCOUNTS.map((account) => (
+              <button
+                key={account.email}
+                onClick={() => handleTryDemo(account)}
+                disabled={demoLoading !== null}
+                className="group relative overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] p-4 text-left backdrop-blur transition hover:-translate-y-1 hover:border-[#ff9900]/40 hover:bg-white/[0.07] disabled:opacity-50"
               >
-                Back
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </main>
+                <div className="space-y-2">
+                  <div className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#ff9900]/15 text-[#ff9900]">
+                    <UserRound className="h-5 w-5" />
+                  </div>
+                  <h3 className="font-semibold text-white group-hover:text-[#febd69]">
+                    {account.name}
+                  </h3>
+                  <p className="text-sm text-white/55">{account.description}</p>
+                  <p className="font-mono text-xs text-white/35">
+                    {account.email}
+                  </p>
+                </div>
+                {demoLoading === account.email && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                    <div className="text-xs font-medium text-white">
+                      Logging in…
+                    </div>
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      </AuthShell>
     );
   }
 
+  const FEATURES = [
+    { Icon: CalendarDays, label: "Timetable OCR", desc: "Snap your schedule, we digitize it" },
+    { Icon: Megaphone, label: "AI Summaries", desc: "Notices condensed in seconds" },
+    { Icon: PartyPopper, label: "Event Reminders", desc: "Never miss what matters" },
+    { Icon: Sunrise, label: "Daily Briefing", desc: "Your morning, organized" },
+  ];
+
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-6 text-center">
-      <div className="max-w-2xl space-y-8">
-        <div className="space-y-2">
-          <div className="text-5xl font-bold tracking-tight text-foreground">
-            Campus<span className="text-primary">OS</span>
+    <main className="relative min-h-screen overflow-hidden bg-[#0d141d] text-white">
+      {/* Background layers */}
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(1200px 600px at 50% -10%, rgba(255,153,0,0.12), transparent 60%), linear-gradient(180deg, #131921 0%, #0d141d 55%, #0a1018 100%)",
+        }}
+      />
+      <Starfield count={70} />
+
+      {/* Top bar */}
+      <header className="relative z-10 px-5 py-4 sm:px-10 sm:py-5">
+        <div className="mx-auto flex max-w-6xl items-center justify-between">
+          <div className="flex items-center gap-2 text-xl font-bold tracking-tight sm:text-2xl">
+            <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-b from-[#febd69] to-[#ff9900] text-sm font-black text-[#131921] sm:h-8 sm:w-8 sm:text-base">
+              C
+            </span>
+            Campus<span className="-ml-1 text-[#ff9900]">OS</span>
           </div>
-          <h1 className="text-xl text-muted-foreground font-medium">
-            Your AI Operating System For Student Life
-          </h1>
+          <button
+            onClick={() => setView("login")}
+            className="inline-flex items-center gap-1.5 rounded-md border border-white/20 bg-white/5 px-3 py-2 text-sm font-medium text-white/90 backdrop-blur transition hover:border-[#ff9900]/50 hover:bg-white/10 hover:text-white sm:px-4"
+          >
+            <ArrowRight className="h-4 w-4" />
+            Sign In
+          </button>
+        </div>
+      </header>
+
+      {/* Hero */}
+      <section className="relative z-10 mx-auto flex max-w-6xl flex-col items-center px-5 pt-6 pb-16 text-center sm:px-6 sm:pt-10 sm:pb-20">
+        {/* Globe */}
+        <div className="relative mb-2 flex w-full max-w-[260px] items-center justify-center sm:mb-6 sm:max-w-[340px]">
+          <Globe3D maxSize={340} />
         </div>
 
-        <div className="grid grid-cols-2 gap-3 text-sm text-left sm:grid-cols-4">
-          {[
-            { icon: "📅", label: "Timetable OCR" },
-            { icon: "📢", label: "AI Summaries" },
-            { icon: "🎉", label: "Event Reminders" },
-            { icon: "🌅", label: "Daily Briefing" },
-          ].map((f) => (
+        <span className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#ff9900]/40 bg-[#ff9900]/10 px-3 py-1.5 text-[11px] font-medium text-[#febd69] sm:px-4 sm:text-xs">
+          <span className="h-1.5 w-1.5 rounded-full bg-[#ff9900]" />
+          Built for modern campuses
+        </span>
+
+        <h1 className="max-w-3xl text-3xl font-extrabold leading-tight tracking-tight sm:text-6xl">
+          Your AI Operating System
+          <br />
+          for{" "}
+          <span className="bg-gradient-to-r from-[#ff9900] to-[#febd69] bg-clip-text text-transparent">
+            Student Life
+          </span>
+        </h1>
+
+        <p className="mt-4 max-w-xl text-sm text-white/60 sm:mt-5 sm:text-lg">
+          Timetables, notices, events, and daily briefings — unified into one
+          intelligent platform that works while you focus on what matters.
+        </p>
+
+        {/* CTAs */}
+        <div className="mt-8 flex w-full flex-col gap-3 sm:mt-9 sm:w-auto sm:flex-row">
+          <button
+            onClick={() => setView("register")}
+            className="group inline-flex items-center justify-center gap-2 rounded-md bg-gradient-to-b from-[#febd69] to-[#ff9900] px-7 py-3 text-sm font-semibold text-[#131921] shadow-lg shadow-[#ff9900]/25 transition hover:brightness-105"
+          >
+            Get Started
+            <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
+          </button>
+          <button
+            onClick={() => setView("demo-select")}
+            className="inline-flex items-center justify-center rounded-md border border-white/20 bg-white/5 px-7 py-3 text-sm font-semibold text-white backdrop-blur transition hover:bg-white/10"
+          >
+            Try Live Demo
+          </button>
+        </div>
+
+        {/* Feature cards */}
+        <div className="mt-16 grid w-full max-w-4xl grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {FEATURES.map(({ Icon, label, desc }) => (
             <div
-              key={f.label}
-              className="flex items-center gap-2 rounded-lg border bg-white/70 px-3 py-2 backdrop-blur"
+              key={label}
+              className="group rounded-xl border border-white/10 bg-white/[0.04] p-5 text-left backdrop-blur transition hover:-translate-y-1 hover:border-[#ff9900]/40 hover:bg-white/[0.07]"
             >
-              <span aria-hidden>{f.icon}</span>
-              <span className="font-medium">{f.label}</span>
+              <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-[#ff9900]/15 text-[#ff9900]">
+                <Icon className="h-5 w-5" />
+              </div>
+              <div className="font-semibold text-white">{label}</div>
+              <div className="mt-1 text-sm text-white/50">{desc}</div>
             </div>
           ))}
         </div>
-
-        <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
-          <Button size="lg" onClick={() => setView("login")}>
-            Login
-          </Button>
-          <Button size="lg" variant="outline" onClick={() => setView("register")}>
-            Register
-          </Button>
-          <Button
-            size="lg"
-            variant="secondary"
-            onClick={() => setView("demo-select")}
-          >
-            Try Demo
-          </Button>
-        </div>
-      </div>
+      </section>
     </main>
   );
 }

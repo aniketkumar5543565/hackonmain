@@ -7,15 +7,23 @@ const BASE_URL =
 export const apiClient: AxiosInstance = axios.create({
   baseURL: BASE_URL,
   headers: { "Content-Type": "application/json" },
-  timeout: 10_000,
+  timeout: 30_000,
 });
 
-// Attach Supabase access token on every request
-apiClient.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().getToken();
+// Attach JWT token on every request
+apiClient.interceptors.request.use(async (config) => {
+  const auth = useAuthStore.getState();
+  const token = auth.token;
+
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+
+  // For FormData (file uploads), let browser set Content-Type with boundary
+  if (typeof FormData !== "undefined" && config.data instanceof FormData) {
+    delete config.headers["Content-Type"];
+  }
+
   return config;
 });
 
@@ -24,7 +32,8 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
     if (error.response?.status === 401) {
-      useAuthStore.getState().clearAuth();
+      const state = useAuthStore.getState();
+      state.clearAuth();
     }
     return Promise.reject(error);
   }
@@ -42,6 +51,7 @@ export function getErrorMessage(error: unknown): string {
       return data.detail.map((d) => d.msg).join(". ");
     }
     if (error.code === "ECONNABORTED") return "Request timed out. Please try again.";
+    if (error.message) return error.message;
   }
   return "Something went wrong. Please try again.";
 }

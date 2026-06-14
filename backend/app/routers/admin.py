@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.dependencies import SuperAdmin, get_user_role_names
+from app.dependencies import AcademicWrite, SuperAdmin, get_user_role_names
 from app.models.academic import Department
 from app.models.club import Club
 from app.models.hostel import Hostel
@@ -28,6 +28,7 @@ from app.schemas.campus import (
     HostelOut,
     RoleOut,
     UserProfileOut,
+    UserProfileUpdate,
     UserRoleOut,
 )
 
@@ -36,7 +37,78 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 DB = Annotated[AsyncSession, Depends(get_db)]
 
 
-# ── User Management ──────────────────────────────────────────────────────── #
+# ── User Management (Academic Admins) ────────────────────────────────────── #
+
+@router.get(
+    "/manage/users",
+    response_model=list[UserProfileOut],
+    summary="List users for management (academic admins)",
+)
+async def manage_list_users(
+    _admin: AcademicWrite,
+    db: DB,
+    role: str | None = None,
+    department_id: uuid.UUID | None = None,
+) -> list[UserProfileOut]:
+    """List users (optionally filtered by role/department) so admins can assign
+    department and year of study."""
+    query = select(UserProfile).order_by(UserProfile.full_name)
+    if role:
+        query = query.where(UserProfile.role == role)
+    if department_id:
+        query = query.where(UserProfile.department_id == department_id)
+    result = await db.execute(query)
+    return [UserProfileOut.model_validate(u) for u in result.scalars().all()]
+
+
+@router.patch(
+    "/manage/users/{user_id}",
+    response_model=UserProfileOut,
+    summary="Update a user's department / year / role (academic admins)",
+)
+async def manage_update_user(
+    user_id: uuid.UUID,
+    body: UserProfileUpdate,
+    _admin: AcademicWrite,
+    db: DB,
+) -> UserProfileOut:
+    result = await db.execute(select(UserProfile).where(UserProfile.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    data = body.model_dump(exclude_unset=True)
+    if "department_id" in data:
+        user.department_id = data["department_id"]
+    if "year_of_study" in data:
+        user.year_of_study = data["year_of_study"]
+    if "role" in data and data["role"]:
+        user.role = data["role"]
+
+    await db.commit()
+    await db.refresh(user)
+    return UserProfileOut.model_validate(user)
+
+
+@router.post(
+    "/manage/departments",
+    response_model=DepartmentOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a department (academic admins)",
+)
+async def manage_create_department(
+    body: DepartmentCreate,
+    _admin: AcademicWrite,
+    db: DB,
+) -> DepartmentOut:
+    dept = Department(name=body.name, code=body.code.upper())
+    db.add(dept)
+    await db.commit()
+    await db.refresh(dept)
+    return DepartmentOut.model_validate(dept)
+
+
+# ── User Management (Super Admin) ────────────────────────────────────────── #
 
 @router.get("/users", response_model=list[UserProfileOut], summary="List all users")
 async def list_users(

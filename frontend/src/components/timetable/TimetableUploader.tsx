@@ -1,18 +1,21 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { uploadTimetable, UploadResponse, TimetableEntry } from "@/lib/timetable-api";
+import { uploadTimetable, confirmTimetable, UploadResponse, TimetableEntry } from "@/lib/timetable-api";
+import { getErrorMessage } from "@/lib/api";
 import { Upload, AlertCircle, CheckCircle, Plus, Trash2 } from "lucide-react";
 
 interface TimetableUploaderProps {
   onSuccess?: (entries: TimetableEntry[]) => void;
+  onCancel?: () => void;
+  initialEntries?: TimetableEntry[];
 }
 
-export default function TimetableUploader({ onSuccess }: TimetableUploaderProps) {
+export default function TimetableUploader({ onSuccess, onCancel, initialEntries }: TimetableUploaderProps) {
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
@@ -29,6 +32,22 @@ export default function TimetableUploader({ onSuccess }: TimetableUploaderProps)
     faculty_name: "",
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Load initial entries if provided (for edit mode)
+  useEffect(() => {
+    if (initialEntries && initialEntries.length > 0) {
+      setEditingEntries(initialEntries);
+      setShowManualAdd(false);
+      setResponse({
+        success: true,
+        message: "Editing existing timetable",
+        entries: initialEntries,
+        extracted_text: "",
+        entries_created: initialEntries.length,
+        errors: [],
+      });
+    }
+  }, [initialEntries]);
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -84,11 +103,15 @@ export default function TimetableUploader({ onSuccess }: TimetableUploaderProps)
       setResponse(result);
       setEditingEntries(result.entries);
 
-      if (!result.success && result.entries.length === 0) {
+      // If no entries found, allow manual entry
+      if (result.entries.length === 0) {
+        setShowManualAdd(true);
+        setError("No timetable entries found in image. Please add entries manually below.");
+      } else if (!result.success) {
         setError(result.message || "Upload failed");
       }
     } catch (err) {
-      setError(`Upload error: ${err instanceof Error ? err.message : "Unknown error"}`);
+      setError(`Upload error: ${getErrorMessage(err)}`);
     } finally {
       setUploading(false);
     }
@@ -136,11 +159,27 @@ export default function TimetableUploader({ onSuccess }: TimetableUploaderProps)
       return;
     }
 
-    onSuccess?.(editingEntries);
-    setEditingEntries([]);
-    setPreview(null);
-    setResponse(null);
+    setUploading(true);
     setError(null);
+
+    try {
+      // Call the confirm API to save entries to database
+      const result = await confirmTimetable(editingEntries);
+      
+      if (result.success) {
+        // Clear the form and notify parent
+        onSuccess?.(result.entries);
+        setEditingEntries([]);
+        setPreview(null);
+        setResponse(null);
+      } else {
+        setError(result.message || "Failed to save timetable");
+      }
+    } catch (err) {
+      setError(`Save error: ${getErrorMessage(err)}`);
+    } finally {
+      setUploading(false);
+    }
   };
 
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -148,29 +187,55 @@ export default function TimetableUploader({ onSuccess }: TimetableUploaderProps)
   return (
     <div className="space-y-4">
       {editingEntries.length === 0 && !response && (
-        <Card
-          className={`border-2 border-dashed transition ${
-            dragActive ? "border-primary bg-primary/5" : "border-muted-foreground/30 hover:border-primary"
-          }`}
-          onDragEnter={handleDrag}
-          onDragLeave={handleDrag}
-          onDragOver={handleDrag}
-          onDrop={handleDrop}
-        >
-          <CardContent className="p-6">
-            <div className="flex flex-col items-center justify-center gap-4">
-              <Upload className="h-8 w-8 text-muted-foreground" />
-              <div className="text-center">
-                <p className="font-medium">Drag and drop your timetable image</p>
-                <p className="text-sm text-muted-foreground">or click to select (JPEG/PNG, max 10 MB)</p>
+        <>
+          <Card
+            className={`border-2 border-dashed transition ${
+              dragActive ? "border-primary bg-primary/5" : "border-muted-foreground/30 hover:border-primary"
+            }`}
+            onDragEnter={handleDrag}
+            onDragLeave={handleDrag}
+            onDragOver={handleDrag}
+            onDrop={handleDrop}
+          >
+            <CardContent className="p-6">
+              <div className="flex flex-col items-center justify-center gap-4">
+                <Upload className="h-8 w-8 text-muted-foreground" />
+                <div className="text-center">
+                  <p className="font-medium">Drag and drop your timetable image</p>
+                  <p className="text-sm text-muted-foreground">or click to select (JPEG/PNG, max 10 MB)</p>
+                </div>
+                <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+                  {uploading ? "Processing..." : "Select Image"}
+                </Button>
+                <input ref={fileInputRef} type="file" accept="image/jpeg,image/png" onChange={handleFileSelect} className="hidden" />
               </div>
-              <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-                {uploading ? "Processing..." : "Select Image"}
-              </Button>
-              <input ref={fileInputRef} type="file" accept="image/jpeg,image/png" onChange={handleFileSelect} className="hidden" />
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+
+          <div className="text-center text-sm text-muted-foreground">
+            <p>or</p>
+          </div>
+
+          <Button 
+            variant="outline" 
+            onClick={() => { 
+              setShowManualAdd(true); 
+              setResponse({ 
+                success: true, 
+                message: "Manual entry mode - add entries below", 
+                entries: [], 
+                extracted_text: "", 
+                entries_created: 0, 
+                errors: [] 
+              }); 
+              setEditingEntries([]); // Initialize as empty but trigger the UI
+            }} 
+            className="w-full"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Create Timetable Manually (Skip OCR)
+          </Button>
+        </>
       )}
 
       {preview && editingEntries.length > 0 && (
@@ -191,7 +256,7 @@ export default function TimetableUploader({ onSuccess }: TimetableUploaderProps)
         </div>
       )}
 
-      {response && editingEntries.length > 0 && (
+      {response && (editingEntries.length > 0 || showManualAdd) && (
         <Card className={response.success ? "border-green-200 dark:border-green-800" : "border-amber-200 dark:border-amber-800"}>
           <CardHeader>
             <div className="flex items-center gap-2">
@@ -220,15 +285,27 @@ export default function TimetableUploader({ onSuccess }: TimetableUploaderProps)
         </Card>
       )}
 
-      {editingEntries.length > 0 && (
+      {(editingEntries.length > 0 || (response && showManualAdd)) && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold">📋 Edit Timetable Entries</h3>
-            <span className="text-sm text-muted-foreground">{editingEntries.length} entries</span>
+            <h3 className="text-lg font-semibold">
+              {editingEntries.length > 0 ? '📋 Edit Timetable Entries' : '📝 Create Timetable Entries'}
+            </h3>
+            {editingEntries.length > 0 && (
+              <span className="text-sm text-muted-foreground">{editingEntries.length} entries</span>
+            )}
           </div>
 
-          <div className="space-y-3">
-            {editingEntries.map((entry, idx) => (
+          {editingEntries.length === 0 && showManualAdd && (
+            <div className="flex gap-2 rounded-lg bg-blue-50 p-3 text-sm text-blue-700 dark:bg-blue-900/20 dark:text-blue-400">
+              <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+              <div>Add your first timetable entry using the form below. You can add multiple entries before saving.</div>
+            </div>
+          )}
+
+          {editingEntries.length > 0 && (
+            <div className="space-y-3">
+              {editingEntries.map((entry, idx) => (
               <Card key={entry.id} className="border">
                 <CardContent className="p-4">
                   <div className="space-y-3">
@@ -309,8 +386,9 @@ export default function TimetableUploader({ onSuccess }: TimetableUploaderProps)
               </Card>
             ))}
           </div>
+          )}
 
-          {!showManualAdd ? (
+          {editingEntries.length > 0 && !showManualAdd ? (
             <Button variant="outline" onClick={() => setShowManualAdd(true)} className="w-full">
               <Plus className="h-4 w-4 mr-2" />
               Add Manual Entry
@@ -403,18 +481,22 @@ export default function TimetableUploader({ onSuccess }: TimetableUploaderProps)
           <div className="flex gap-2 pt-4 border-t">
             <Button
               onClick={() => {
-                setEditingEntries([]);
-                setPreview(null);
-                setResponse(null);
+                if (onCancel) {
+                  onCancel();
+                } else {
+                  setEditingEntries([]);
+                  setPreview(null);
+                  setResponse(null);
+                }
               }}
               variant="outline"
               className="flex-1"
             >
               Cancel
             </Button>
-            <Button onClick={handleConfirmAndSubmit} className="flex-1">
+            <Button onClick={handleConfirmAndSubmit} className="flex-1" disabled={uploading}>
               <CheckCircle className="h-4 w-4 mr-2" />
-              Confirm & Save Timetable
+              {uploading ? "Saving..." : "Confirm & Save Timetable"}
             </Button>
           </div>
         </div>

@@ -1,102 +1,160 @@
 """
-Auth router.
-
-Supabase handles email/password auth entirely on the frontend.
-This router provides:
-  POST /auth/sync-profile  — called once after Supabase sign-up to
-                             create the user_profiles row with role.
-  GET  /auth/me            — returns the current user's profile.
+Super simple auth router - no Supabase, just email/password.
 """
 import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jwt import PyJWTError
+from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import verify_supabase_token
+from app.core.security import create_simple_token, verify_simple_token
 from app.database import get_db
 from app.dependencies import CurrentUser
+from app.models.academic import Department
 from app.models.user import UserProfile
-from app.schemas.auth import SyncProfileRequest, UserProfileOut
+from app.schemas.auth import UserProfileOut
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
-@router.post(
-    "/sync-profile",
-    response_model=UserProfileOut,
-    status_code=status.HTTP_200_OK,
-    summary="Create or update the user profile after Supabase sign-up",
-)
-async def sync_profile(
-    body: SyncProfileRequest,
-    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserProfileOut
+
+
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str
+    full_name: str
+    role: str = "student"  # student, admin, professor
+
+
+@router.post("/login", response_model=LoginResponse)
+async def login(
+    body: LoginRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
-) -> UserProfileOut:
+) -> LoginResponse:
     """
-    Called by the frontend immediately after Supabase signUp() succeeds.
-    Creates the user_profiles row if it doesn't exist, or updates it if it does.
-    The Supabase JWT is required to prove identity.
+    Simple login - checks if user exists, auto-creates if not.
+    Password is ignored in dev mode (any password works).
     """
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Valid Supabase token required",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-
-    if credentials is None:
-        raise credentials_exception
-
-    try:
-        payload = verify_supabase_token(credentials.credentials)
-        user_id = uuid.UUID(payload["sub"])
-    except (PyJWTError, KeyError, ValueError):
-        raise credentials_exception
-
-    result = await db.execute(select(UserProfile).where(UserProfile.id == user_id))
+    # Find user by email
+    result = await db.execute(select(UserProfile).where(UserProfile.email == body.email))
     profile = result.scalar_one_or_none()
-
+    
     if profile is None:
+        # Auto-create user
+        role = "STUDENT"
+        if "admin" in body.email.lower():
+            role = "ACADEMIC_ADMIN"
+        elif "professor" in body.email.lower() or "faculty" in body.email.lower():
+            role = "FACULTY"
+        
+        # Get or create department
+        dept_result = await db.execute(select(Department).limit(1))
+        dept = dept_result.scalar_one_or_none()
+        if dept is None:
+            dept = Department(name="Computer Science & Engineering", code="CSE")
+            db.add(dept)
+            await db.flush()
+        
         profile = UserProfile(
-            id=user_id,
+            id=uuid.uuid4(),
             email=body.email,
-            full_name=body.full_name,
-            role="STUDENT",  # All new users start as STUDENT; admins elevate roles
+            full_name=body.email.split("@")[0].title(),
+            role=role,
             is_demo=False,
-            department_id=body.department_id,
-            year_of_study=body.year_of_study,
+            department_id=dept.id,
         )
         db.add(profile)
-    else:
-        # Allow updating name and department context on re-sync
-        profile.full_name = body.full_name
-        if body.department_id:
-            profile.department_id = body.department_id
-        if body.year_of_study:
-            profile.year_of_study = body.year_of_study
+        await db.commit()
+        await db.refresh(profile)
+    
+    # Create token
+    token = create_simple_token(str(profile.id), profile.email)
+    
+    # Build response
+    user_out = UserProfileOut.model_validate(profile)
+    user_out.roles = [profile.role]
+    
+    return LoginResponse(
+        access_token=token,
+        token_type="bearer",
+        user=user_out,
+    )
 
+
+@router.post("/register", response_model=LoginResponse)
+async def register(
+    body: RegisterRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> LoginResponse:
+    """
+    Register a new user.
+    """
+    # Check if user exists
+    result = await db.execute(select(UserProfile).where(UserProfile.email == body.email))
+    existing = result.scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    # Map role
+    role_map = {
+        "student": "STUDENT",
+        "admin": "ACADEMIC_ADMIN",
+        "professor": "FACULTY",
+        "faculty": "FACULTY",
+    }
+    role = role_map.get(body.role.lower(), "STUDENT")
+    
+    # Get or create department
+    dept_result = await db.execute(select(Department).limit(1))
+    dept = dept_result.scalar_one_or_none()
+    if dept is None:
+        dept = Department(name="Computer Science & Engineering", code="CSE")
+        db.add(dept)
+        await db.flush()
+    
+    # Create user
+    profile = UserProfile(
+        id=uuid.uuid4(),
+        email=body.email,
+        full_name=body.full_name,
+        role=role,
+        is_demo=False,
+        department_id=dept.id,
+    )
+    db.add(profile)
     await db.commit()
     await db.refresh(profile)
-    out = UserProfileOut.model_validate(profile)
-    out.roles = [ur.role.name for ur in profile.user_roles if ur.role] if profile.user_roles else []
-    if not out.roles:
-        out.roles = [profile.role]  # fallback to legacy role
-    return out
+    
+    # Create token
+    token = create_simple_token(str(profile.id), profile.email)
+    
+    # Build response
+    user_out = UserProfileOut.model_validate(profile)
+    user_out.roles = [profile.role]
+    
+    return LoginResponse(
+        access_token=token,
+        token_type="bearer",
+        user=user_out,
+    )
 
 
-@router.get(
-    "/me",
-    response_model=UserProfileOut,
-    summary="Return the currently authenticated user's profile",
-)
-async def me(current_user: CurrentUser) -> UserProfileOut:
-    out = UserProfileOut.model_validate(current_user)
-    out.roles = [ur.role.name for ur in current_user.user_roles if ur.role] if current_user.user_roles else []
-    if not out.roles:
-        out.roles = [current_user.role]  # fallback to legacy role
+@router.get("/me", response_model=UserProfileOut)
+async def me(user: CurrentUser) -> UserProfileOut:
+    """Return the currently authenticated user's profile."""
+    out = UserProfileOut.model_validate(user)
+    out.roles = [user.role]
     return out

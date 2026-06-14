@@ -1,17 +1,33 @@
 import { apiClient } from "./api";
 import type { UserProfile } from "@/store/auth";
 
-export interface SyncProfilePayload {
+export interface LoginPayload {
   email: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  access_token: string;
+  token_type: string;
+  user: UserProfile;
+}
+
+export interface RegisterPayload {
+  email: string;
+  password: string;
   full_name: string;
-  role: "student" | "professor";
+  role?: "student" | "professor" | "admin";
 }
 
 export const authApi = {
-  /** Called after Supabase signUp() to persist the role in our DB. */
-  syncProfile: (payload: SyncProfilePayload) =>
-    apiClient.post<UserProfile>("/auth/sync-profile", payload),
+  /** Login with email and password - returns token and user profile */
+  login: (payload: LoginPayload) =>
+    apiClient.post<LoginResponse>("/auth/login", payload),
 
-  /** Returns the current user's profile from our DB. */
+  /** Register a new user */
+  register: (payload: RegisterPayload) =>
+    apiClient.post<LoginResponse>("/auth/register", payload),
+
+  /** Returns the current user's profile from our DB */
   me: () => apiClient.get<UserProfile>("/auth/me"),
 };

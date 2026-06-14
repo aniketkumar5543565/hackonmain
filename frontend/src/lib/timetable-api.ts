@@ -35,6 +35,15 @@ export async function uploadTimetable(file: File): Promise<UploadResponse> {
   return response.data;
 }
 
+export async function confirmTimetable(entries: TimetableEntry[]): Promise<UploadResponse> {
+  const response = await apiClient.post<UploadResponse>(
+    "/academic/timetable/confirm",
+    { entries }
+  );
+
+  return response.data;
+}
+
 export async function getTimetable(
   departmentId?: string,
   semester?: number

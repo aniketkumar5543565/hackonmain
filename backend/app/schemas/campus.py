@@ -13,10 +13,11 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 class SyncProfileRequest(BaseModel):
     """
     Sent by the frontend after Supabase sign-up.
-    All new users start as STUDENT; role elevation is done by admins.
+    Stores the selected role in the application profile.
     """
     email: EmailStr
     full_name: str = Field(min_length=1, max_length=255)
+    role: Literal["student", "professor", "admin"] = "student"
     department_id: uuid.UUID | None = None
     year_of_study: int | None = Field(default=None, ge=1, le=8)
 
@@ -33,6 +34,13 @@ class UserProfileOut(BaseModel):
     roles: list[str] = []
 
     model_config = {"from_attributes": True}
+
+
+class UserProfileUpdate(BaseModel):
+    """Admin edit of a user's academic placement / role."""
+    department_id: uuid.UUID | None = None
+    year_of_study: int | None = Field(default=None, ge=1, le=8)
+    role: str | None = None
 
 
 # ── Role assignment ───────────────────────────────────────────────────────── #
@@ -350,6 +358,7 @@ class NoticeCreate(BaseModel):
     body: str = Field(min_length=1)
     domain: Literal["academic", "hostel", "placement", "clubs", "general"]
     target_department_id: uuid.UUID | None = None
+    target_year: int | None = Field(default=None, ge=1, le=8)
     is_pinned: bool = False
 
 
@@ -359,6 +368,7 @@ class NoticeOut(BaseModel):
     body: str
     domain: str
     target_department_id: uuid.UUID | None = None
+    target_year: int | None = None
     created_by: uuid.UUID | None = None
     is_pinned: bool
     created_at: datetime
@@ -430,3 +440,331 @@ class AIQueryRequest(BaseModel):
 class AIQueryResponse(BaseModel):
     reply: str
     context_used: list[str] = []
+
+
+# ── AI Admin Assistant ────────────────────────────────────────────────────── #
+
+class ConversationContext(BaseModel):
+    """Stateless conversation context passed from frontend"""
+    department_id: uuid.UUID | None = None
+    semester: int | None = Field(default=None, ge=1, le=8)
+    pending_operation: dict | None = None  # For multi-turn operations
+
+
+class ChatRequest(BaseModel):
+    """Request to AI assistant chat endpoint"""
+    message: str = Field(min_length=1, max_length=500)
+    context: ConversationContext = Field(default_factory=ConversationContext)
+
+
+class OperationResult(BaseModel):
+    """Result of a timetable operation"""
+    operation_type: Literal["add", "update", "delete", "replace", "query"]
+    success: bool
+    affected_entries_count: int = 0
+    entries: list[TimetableOut] = []
+    error_message: str | None = None
+
+
+class ChatResponse(BaseModel):
+    """Response from AI assistant chat endpoint"""
+    reply: str  # Natural language response
+    context: ConversationContext  # Updated context
+    action_taken: OperationResult | None = None  # If operation was executed
+    requires_confirmation: bool = False  # If destructive action needs confirmation
+
+
+class ParsedIntent(BaseModel):
+    """Internal model for LLM output"""
+    intent: Literal["add", "update", "delete", "replace", "query", "help", "unclear"]
+    parameters: dict
+    missing_fields: list[str]
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+# ── Attendance ────────────────────────────────────────────────────────────── #
+
+class StudentBrief(BaseModel):
+    """Minimal student info for the attendance roster."""
+    id: uuid.UUID
+    full_name: str
+    email: str
+    year_of_study: int | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class AttendanceMarkItem(BaseModel):
+    student_id: uuid.UUID
+    status: Literal["present", "absent", "late"] = "present"
+
+
+class AttendanceMarkRequest(BaseModel):
+    """Bulk-mark attendance for a date + subject."""
+    department_id: uuid.UUID
+    year_of_study: int | None = Field(default=None, ge=1, le=8)
+    subject: str = Field(default="General", min_length=1, max_length=100)
+    attend_date: date
+    records: list[AttendanceMarkItem] = Field(min_length=1)
+
+
+class AttendanceRecordOut(BaseModel):
+    id: int
+    student_id: uuid.UUID
+    department_id: uuid.UUID | None = None
+    year_of_study: int | None = None
+    subject: str
+    attend_date: date
+    status: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class AttendanceMarkResponse(BaseModel):
+    success: bool
+    message: str
+    saved: int = 0
+
+
+class AttendanceSummaryOut(BaseModel):
+    """Per-student attendance summary (used by student view)."""
+    total: int
+    present: int
+    absent: int
+    late: int
+    percentage: float
+    records: list[AttendanceRecordOut] = []
+
+
+# ── Attendance Predictor ──────────────────────────────────────────────────── #
+
+class SubjectPrediction(BaseModel):
+    subject: str
+    present: int
+    total: int
+    percentage: float
+    status: Literal["safe", "warning", "critical"]
+    can_miss: int          # how many more classes can be missed and stay >= threshold
+    must_attend: int       # consecutive classes to attend to recover (0 if already safe)
+    recoverable: bool      # whether recovery to threshold is realistically possible
+    message: str
+
+
+class AttendancePrediction(BaseModel):
+    threshold: int
+    overall_percentage: float
+    overall_status: Literal["safe", "warning", "critical"]
+    at_risk_count: int
+    subjects: list[SubjectPrediction] = []
+    summary: str
+
+
+# ── Mess Schedule (campus-wide, OCR upload) ───────────────────────────────── #
+
+class MessScheduleOut(BaseModel):
+    id: int
+    day_of_week: str
+    meal_type: str
+    start_time: time | None = None
+    end_time: time | None = None
+    items: str
+    is_special: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class MessUploadResponse(BaseModel):
+    success: bool
+    message: str
+    extracted_text: str = ""
+    entries: list[dict] = []
+    errors: list[str] = []
+
+
+class MessConfirmRequest(BaseModel):
+    entries: list[dict] = Field(min_length=1)
+
+
+# ── Chat history ──────────────────────────────────────────────────────────── #
+
+class ChatMessageOut(BaseModel):
+    id: int
+    role: str
+    content: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── Wellbeing check-in (anonymous) ────────────────────────────────────────── #
+
+class WellbeingCheckinCreate(BaseModel):
+    mood: int = Field(ge=1, le=5)    # 1 very low .. 5 great
+    stress: int = Field(ge=1, le=5)  # 1 none .. 5 overwhelmed
+    sleep: int = Field(ge=1, le=5)   # 1 poor .. 5 excellent
+    note: str | None = Field(default=None, max_length=500)
+
+
+class WellbeingStatus(BaseModel):
+    submitted: bool
+    week_start: date
+
+
+class WellbeingDeptStat(BaseModel):
+    department: str
+    responses: int
+    avg_stress: float
+    high_stress_pct: float
+
+
+class WellbeingWeekPoint(BaseModel):
+    week_start: date
+    responses: int
+    avg_mood: float
+    avg_stress: float
+    avg_sleep: float
+    high_stress_pct: float
+
+
+class WellbeingInsights(BaseModel):
+    week_start: date
+    responses: int
+    avg_mood: float
+    avg_stress: float
+    avg_sleep: float
+    high_stress_pct: float
+    low_mood_pct: float
+    status: Literal["calm", "watch", "elevated"]
+    insight: str
+    recommendations: list[str] = []
+    departments: list[WellbeingDeptStat] = []
+    trend: list[WellbeingWeekPoint] = []
+    min_cohort: int = 3
+
+
+# ── Mess sentiment (1-tap ratings) ────────────────────────────────────────── #
+
+class MessRateRequest(BaseModel):
+    meal_type: Literal["breakfast", "lunch", "snacks", "dinner"]
+    rating: int = Field(ge=1, le=5)
+
+
+class MessTodayRatings(BaseModel):
+    rating_date: date
+    ratings: dict[str, int] = {}  # meal_type -> rating already given today
+
+
+class MealSentiment(BaseModel):
+    meal_type: str
+    count: int
+    avg: float
+    positive_pct: float
+    negative_pct: float
+
+
+class SentimentTrendPoint(BaseModel):
+    day: date
+    count: int
+    avg: float
+
+
+class MessSentiment(BaseModel):
+    day: date
+    total: int
+    overall_avg: float
+    meals: list[MealSentiment] = []
+    trend: list[SentimentTrendPoint] = []
+    alerts: list[str] = []
+
+
+# ── Schedule conflict detection ───────────────────────────────────────────── #
+
+class ScheduleConflict(BaseModel):
+    type: Literal[
+        "exam_room", "exam_student_overlap", "class_room", "class_faculty", "event_venue"
+    ]
+    severity: Literal["high", "medium", "low"]
+    title: str
+    detail: str
+    when: str
+    items: list[str] = []
+
+
+class ConflictScanResult(BaseModel):
+    scanned_at: datetime
+    total: int
+    counts: dict[str, int] = {}
+    conflicts: list[ScheduleConflict] = []
+
+
+class ClassSlotCheck(BaseModel):
+    """A proposed class slot to check for conflicts before scheduling."""
+    department_id: uuid.UUID
+    semester: int = Field(ge=1, le=8)
+    day_of_week: Literal[
+        "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"
+    ]
+    start_time: time
+    end_time: time
+    subject: str = Field(min_length=1, max_length=100)
+    room: str | None = Field(default=None, max_length=50)
+    faculty_name: str | None = Field(default=None, max_length=100)
+
+
+class SlotConflict(BaseModel):
+    kind: Literal["room", "faculty", "cohort"]
+    detail: str
+
+
+class SlotCheckResult(BaseModel):
+    has_conflict: bool
+    conflicts: list[SlotConflict] = []
+
+
+class FreeWindow(BaseModel):
+    start: time
+    end: time
+
+
+class RoomFreeSlots(BaseModel):
+    room: str
+    free_windows: list[FreeWindow] = []
+
+
+class FreeSlotsResult(BaseModel):
+    day_of_week: str
+    working_start: time
+    working_end: time
+    rooms: list[RoomFreeSlots] = []
+
+
+# ── Smart Daily Digest ────────────────────────────────────────────────────── #
+
+class DigestClass(BaseModel):
+    subject: str
+    start: str
+    end: str
+    room: str | None = None
+    at_risk: bool = False
+
+
+class DigestItem(BaseModel):
+    title: str
+    subtitle: str | None = None
+    when: str | None = None
+    urgent: bool = False
+
+
+class DigestResponse(BaseModel):
+    greeting: str
+    date: str
+    insight: str
+    classes: list[DigestClass] = []
+    assignments: list[DigestItem] = []
+    deadlines: list[DigestItem] = []
+    notices: list[DigestItem] = []
+    events: list[DigestItem] = []
+    attendance_alerts: list[DigestItem] = []
+    quick_actions: list[str] = []

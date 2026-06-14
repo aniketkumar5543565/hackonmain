@@ -1,10 +1,14 @@
 "use client";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { TimetableEntry } from "@/lib/timetable-api";
+import { Pencil } from "lucide-react";
 
 interface TimetableDisplayProps {
   entries: TimetableEntry[];
+  isAdmin?: boolean;
+  onEdit?: (entries: TimetableEntry[]) => void;
 }
 
 const DAYS_ORDER = [
@@ -17,7 +21,7 @@ const DAYS_ORDER = [
   "Sunday",
 ];
 
-export default function TimetableDisplay({ entries }: TimetableDisplayProps) {
+export default function TimetableDisplay({ entries, isAdmin = false, onEdit }: TimetableDisplayProps) {
   if (!entries || entries.length === 0) {
     return (
       <Card>
@@ -47,8 +51,18 @@ export default function TimetableDisplay({ entries }: TimetableDisplayProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Your Timetable</CardTitle>
-        <CardDescription>{entries.length} classes scheduled</CardDescription>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>Your Timetable</CardTitle>
+            <CardDescription>{entries.length} classes scheduled</CardDescription>
+          </div>
+          {isAdmin && onEdit && (
+            <Button variant="outline" size="sm" onClick={() => onEdit(entries)}>
+              <Pencil className="h-4 w-4 mr-2" />
+              Edit Timetable
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         <div className="space-y-6">

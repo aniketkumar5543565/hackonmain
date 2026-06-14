@@ -37,12 +37,17 @@ async def list_notices(
     query = select(Notice).order_by(Notice.is_pinned.desc(), Notice.created_at.desc()).limit(limit)
     if domain:
         query = query.where(Notice.domain == domain)
-    # Filter by department if student/faculty has a department
-    # Global notices (target_department_id IS NULL) are always included
+    # Filter by department: global notices (NULL) always included.
     if current_user.department_id:
         query = query.where(
             (Notice.target_department_id == current_user.department_id) |
             (Notice.target_department_id.is_(None))
+        )
+    # Filter by year of study: notices targeting all years (NULL) always included.
+    if current_user.year_of_study:
+        query = query.where(
+            (Notice.target_year == current_user.year_of_study) |
+            (Notice.target_year.is_(None))
         )
     result = await db.execute(query)
     return [NoticeOut.model_validate(n) for n in result.scalars().all()]
@@ -75,6 +80,7 @@ async def create_notice(
         body=body.body,
         domain=body.domain,
         target_department_id=body.target_department_id,
+        target_year=body.target_year,
         created_by=current_user.id,
         is_pinned=body.is_pinned,
     )

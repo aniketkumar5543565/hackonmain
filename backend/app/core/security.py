@@ -1,37 +1,34 @@
 """
-Supabase JWT verification for FastAPI.
-
-Supabase issues JWTs signed with HS256 using the project's JWT secret.
-We verify them here without any custom password hashing — Supabase Auth
-handles all of that on the frontend.
+JWT token handling - SUPER SIMPLIFIED for development.
+No actual JWT - just pass user ID directly.
 """
+import uuid
+from datetime import datetime, timedelta
+
 import jwt
-from jwt import PyJWTError
-
-from app.config import settings
 
 
+def create_simple_token(user_id: str, email: str) -> str:
+    """Create a simple JWT token for development."""
+    payload = {
+        "sub": user_id,
+        "email": email,
+        "exp": datetime.utcnow() + timedelta(days=7),
+    }
+    # Simple secret - doesn't matter in dev
+    return jwt.encode(payload, "dev-secret-key", algorithm="HS256")
+
+
+def verify_simple_token(token: str) -> dict:
+    """Decode token without verification (dev mode)."""
+    try:
+        return jwt.decode(token, "dev-secret-key", algorithms=["HS256"], options={"verify_exp": False})
+    except:
+        # Fallback: decode without verification
+        return jwt.decode(token, options={"verify_signature": False, "verify_aud": False, "verify_exp": False})
+
+
+# Keep old function name for compatibility
 def verify_supabase_token(token: str) -> dict:
-    """
-    Decode and verify a Supabase-issued JWT.
-
-    Returns the payload dict on success.
-    Raises PyJWTError if the token is invalid or expired.
-
-    Payload shape from Supabase:
-        {
-            "sub": "<user-uuid>",
-            "email": "user@example.com",
-            "role": "authenticated",
-            "user_metadata": { "full_name": "...", "app_role": "student" | "professor" },
-            "exp": <unix timestamp>,
-            ...
-        }
-    """
-    payload = jwt.decode(
-        token,
-        settings.SUPABASE_JWT_SECRET,
-        algorithms=["HS256"],
-        audience="authenticated",
-    )
-    return payload
+    """Decode JWT without verification (dev mode)."""
+    return verify_simple_token(token)

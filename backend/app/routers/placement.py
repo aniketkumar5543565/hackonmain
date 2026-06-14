@@ -49,6 +49,16 @@ async def create_drive(
     return PlacementDriveOut.model_validate(drive)
 
 
+@router.delete("/drives/{drive_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_drive(drive_id: uuid.UUID, _admin: PlacementWrite, db: DB) -> None:
+    result = await db.execute(select(PlacementDrive).where(PlacementDrive.id == drive_id))
+    drive = result.scalar_one_or_none()
+    if not drive:
+        raise HTTPException(status_code=404, detail="Drive not found")
+    await db.delete(drive)
+    await db.commit()
+
+
 @router.post(
     "/drives/{drive_id}/register",
     status_code=status.HTTP_201_CREATED,
@@ -107,3 +117,13 @@ async def create_placement_notice(
     await db.commit()
     await db.refresh(notice)
     return PlacementNoticeOut.model_validate(notice)
+
+
+@router.delete("/notices/{notice_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_placement_notice(notice_id: int, _admin: PlacementWrite, db: DB) -> None:
+    result = await db.execute(select(PlacementNotice).where(PlacementNotice.id == notice_id))
+    notice = result.scalar_one_or_none()
+    if not notice:
+        raise HTTPException(status_code=404, detail="Notice not found")
+    await db.delete(notice)
+    await db.commit()

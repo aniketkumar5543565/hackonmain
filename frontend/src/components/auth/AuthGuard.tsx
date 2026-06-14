@@ -2,25 +2,24 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { useAuthStore } from "@/store/auth";
 
 /**
  * Protects pages that require authentication.
- * Checks the Supabase session and redirects to / if none exists.
+ * Redirects to / if not authenticated.
  */
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const { isAuthenticated } = useAuthStore();
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        router.replace("/");
-      } else {
-        setChecking(false);
-      }
-    });
-  }, [router]);
+    if (!isAuthenticated()) {
+      router.replace("/");
+    } else {
+      setChecking(false);
+    }
+  }, [router, isAuthenticated]);
 
   if (checking) {
     return (

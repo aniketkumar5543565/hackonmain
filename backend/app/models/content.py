@@ -33,6 +33,8 @@ class Notice(Base):
         ForeignKey("departments.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # Optional: target only a specific year of study (NULL = all years)
+    target_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("user_profiles.id", ondelete="SET NULL"),
