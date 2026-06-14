@@ -18,4 +18,9 @@ Write-Host "Press Ctrl+C to stop" -ForegroundColor Yellow
 Write-Host ""
 
 # Start uvicorn
-python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+$port = $env:PORT
+if ([string]::IsNullOrWhiteSpace($port)) {
+    $port = "8000"
+}
+
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port $port

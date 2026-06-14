@@ -76,6 +76,11 @@ app.include_router(wellbeing.router, prefix=PREFIX)
 app.include_router(ai.router, prefix=PREFIX)
 
 
+@app.get("/", tags=["health"])
+async def root_health_check():
+    return {"status": "ok", "service": "campusos-api", "version": "2.0.0"}
+
+
 @app.get("/health", tags=["health"])
 async def health_check():
     return {"status": "ok", "service": "campusos-api", "version": "2.0.0"}
