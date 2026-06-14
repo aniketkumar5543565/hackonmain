@@ -7,6 +7,8 @@ backend/node_modules/
 frontend/.next/
 dist/
 build/
+out/
+frontend/out/
 
 # Python caches and test artifacts
 __pycache__/
