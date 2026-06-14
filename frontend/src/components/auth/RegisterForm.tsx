@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { supabase } from "@/lib/supabase";
 import { authApi } from "@/lib/auth-api";
 import { useAuthStore } from "@/store/auth";
 import { getErrorMessage } from "@/lib/api";
@@ -19,7 +18,8 @@ const REGISTER_ROLES: { value: RegisterRole; label: string }[] = [
 
 export default function RegisterForm() {
   const router = useRouter();
-  const setProfile = useAuthStore((s) => s.setProfile);
+  const setToken = useAuthStore((s) => s.setToken);
+  const setUser = useAuthStore((s) => s.setUser);
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -35,43 +35,13 @@ export default function RegisterForm() {
     setError(null);
     setLoading(true);
 
-    // Step 1: Create the Supabase Auth account
-    const { data, error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { full_name: fullName, app_role: role }, // stored in Supabase user_metadata
-      },
-    });
-
-    if (signUpError) {
-      const message = signUpError.message.toLowerCase();
-      if (message.includes("rate limit") || message.includes("too many")) {
-        setError("Too many signup attempts. Please wait a minute, then try again.");
-      } else if (message.includes("already")) {
-        setError("An account with this email address is already registered.");
-      } else {
-        setError(signUpError.message);
-      }
-      setLoading(false);
-      return;
-    }
-
-    if (!data.session) {
-      // Supabase email confirmation is ON — tell the user to check their inbox
-      setError(null);
-      setLoading(false);
-      alert("Check your email to confirm your account, then log in.");
-      return;
-    }
-
-    // Step 2: Sync the profile (role) to our FastAPI database
     try {
-      const res = await authApi.syncProfile({ email, full_name: fullName, role });
-      setProfile(res.data);
+      const res = await authApi.register({ email, password, full_name: fullName, role });
+      setToken(res.data.access_token);
+      setUser(res.data.user);
       router.push("/dashboard");
     } catch (err) {
-      setError("Account created but profile sync failed: " + getErrorMessage(err));
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
